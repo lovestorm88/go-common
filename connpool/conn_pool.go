@@ -13,8 +13,8 @@ import (
 var NowFunc = time.Now // for testing
 
 type ConnPool struct {
-	Connect    func() (interface{}, error) //connect func
-	DisConnect func(c interface{})         //disconnect func
+	Connect    func() (interface{}, int, error) //connect func,return instance,id,error
+	DisConnect func(c interface{}, id int)      //disconnect func
 
 	//must init param
 	// Maximum number of connections allocated by the pool at a given time.
@@ -40,20 +40,19 @@ type ConnPool struct {
 	idlePool list.List
 
 	//internal param
-	activeNum int   //current inuse num
-	waitNum   int   //等待的数量，不应该超过2倍的MaxActiveNum
-	idNum     int64 //连接的编号计数
+	activeNum int //current inuse num
+	waitNum   int //等待的数量，不应该超过2倍的MaxActiveNum
 }
 
 type Conn struct {
 	t    time.Time   //time duration
 	Err  error       // 表示该条链接是否已经出错
 	Inst interface{} //具体的连接实例
-	ID   int64       //连接的编号
+	ID   int         //连接的编号
 }
 
 /* new connection pool */
-func NewConnectionPool(maxActiveNum int, revIdleNum int, idleTimeout time.Duration, connectFunc func() (interface{}, error), disConnectFunc func(c interface{})) *ConnPool {
+func NewConnectionPool(maxActiveNum int, revIdleNum int, idleTimeout time.Duration, connectFunc func() (interface{}, int, error), disConnectFunc func(c interface{}, id int)) *ConnPool {
 	return &ConnPool{
 		MaxActiveNum:    maxActiveNum,
 		ReservedIdleNum: revIdleNum,
@@ -82,7 +81,7 @@ func (p *ConnPool) Pop() *Conn {
 			}
 			p.idlePool.Remove(e)
 			p.mu.Unlock()
-			go p.DisConnect(c.Inst)
+			go p.DisConnect(c.Inst, c.ID)
 			p.mu.Lock()
 		}
 	}
@@ -108,11 +107,9 @@ func (p *ConnPool) Pop() *Conn {
 
 		if p.MaxActiveNum == 0 || p.activeNum < p.MaxActiveNum {
 			p.activeNum += 1
-			id := p.idNum
-			p.idNum += 1
 			p.mu.Unlock()
 			//新申请
-			Inst, e := p.Connect()
+			Inst, id, e := p.Connect()
 			if e != nil {
 				p.mu.Lock()
 				p.activeNum -= 1
@@ -153,7 +150,7 @@ func (p *ConnPool) Push(c *Conn) {
 		p.mu.Lock()
 		p.activeNum -= 1
 		p.mu.Unlock()
-		p.DisConnect(c.Inst)
+		p.DisConnect(c.Inst, c.ID)
 		return
 	}
 
