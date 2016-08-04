@@ -146,7 +146,7 @@ func (p *ConnPool) Push(c *Conn) {
 
 	// 如果连接网络出错，直接丢掉
 	if c.Err != nil {
-		log.Printf("connection pool:drop error connection,id:%04d,err:%s", c.ID, c.Err.Error())
+		log.Printf("connection pool:drop error connection,id:%d,err:%s", c.ID, c.Err.Error())
 		p.mu.Lock()
 		p.activeNum -= 1
 		p.mu.Unlock()
